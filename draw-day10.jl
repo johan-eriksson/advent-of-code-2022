@@ -51,12 +51,10 @@ function run(cpu::Cpu, instructions)
 end
 
 # %%
-function solve_part_1(input)
+function draw_image(input)
     cpu = Cpu()
     run(cpu, input)
-
-    cpu.score
 end 
 
-solve_part_1(f)
+draw_image(f)
 
