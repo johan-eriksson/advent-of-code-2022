@@ -1,7 +1,6 @@
+import math
 import pdb
 import re
-
-GOAL = 24
 
 
 class State:
@@ -64,9 +63,15 @@ class State:
 
 
 def solve(
-    state: State, blueprint, cache: dict, skip_ore, skip_clay, skip_obsidian
+    target: int,
+    state: State,
+    blueprint,
+    cache: dict,
+    skip_ore,
+    skip_clay,
+    skip_obsidian,
 ) -> int:
-    if state.minute == GOAL - 1:
+    if state.minute == target - 1:
         return state.score()
 
     if state in cache:
@@ -82,7 +87,7 @@ def solve(
         s.obsidian -= obsidian_cost
         s.geode_prod += 1
 
-        best = max(best, solve(s, blueprint, cache, False, False, False))
+        best = max(best, solve(target, s, blueprint, cache, False, False, False))
 
         # heuristic: if we can build geode prod it's probably the best option, no need to search other options
         return best
@@ -98,7 +103,7 @@ def solve(
             s.clay -= clay_cost
             s.obsidian_prod += 1
 
-            best = max(best, solve(s, blueprint, cache, False, False, False))
+            best = max(best, solve(target, s, blueprint, cache, False, False, False))
 
     ore_cost = blueprint[2]
     if not skip_clay and state.ore >= ore_cost:
@@ -109,7 +114,7 @@ def solve(
             s.ore -= ore_cost
             s.clay_prod += 1
 
-            best = max(best, solve(s, blueprint, cache, False, False, False))
+            best = max(best, solve(target, s, blueprint, cache, False, False, False))
 
     ore_cost = blueprint[1]
 
@@ -121,10 +126,12 @@ def solve(
             s.ore -= ore_cost
             s.ore_prod += 1
 
-            best = max(best, solve(s, blueprint, cache, False, False, False))
+            best = max(best, solve(target, s, blueprint, cache, False, False, False))
 
     s = state.step()
-    best = max(best, solve(s, blueprint, cache, skip_ore, skip_clay, skip_obsidian))
+    best = max(
+        best, solve(target, s, blueprint, cache, skip_ore, skip_clay, skip_obsidian)
+    )
 
     cache[state] = best
     return best
@@ -140,11 +147,11 @@ def parse_raw_blueprint(s):
     return tuple(map(int, result.groups()))
 
 
-def evaluate_blueprint(raw_input):
+def evaluate_blueprint(raw_input, target):
     blueprint = parse_raw_blueprint(raw_input)
     state = State()
     cache = {}
-    ans = solve(state, blueprint, cache, False, False, False)
+    ans = solve(target, state, blueprint, cache, False, False, False)
 
     print(f"Blueprint {blueprint[0]} can get {ans} geodes.")
     return ans
@@ -155,10 +162,17 @@ def part1():
     with open("day19.input") as f:
         lines = f.readlines()
     for idx, line in enumerate(lines):
-        score += (1+idx) * evaluate_blueprint(line)
+        score += (1 + idx) * evaluate_blueprint(line, 24)
 
     return score
 
 
+def part2():
+    with open("day19.input") as f:
+        lines = f.readlines()
+    geodes = map(lambda line: evaluate_blueprint(line, 32), lines[0:3])
+    return math.prod(geodes)
+
+
 if __name__ == "__main__":
-    print(part1())
+    print(part2())
