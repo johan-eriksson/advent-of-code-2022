@@ -1,88 +1,133 @@
 import pdb
-import queue
 import re
-import numpy as np
-import cProfile
 
-class State():
+GOAL = 24
+
+
+class State:
     def __init__(self):
-        pass
-
-    def new(self, blueprint):
-        self.blueprint = blueprint
-
         self.minute = 0
 
-        self.prod = np.array([1, 0, 0, 0])
-        self.stock = np.array([0, 0, 0, 0])
-        self.incoming_prod = np.array([0, 0, 0, 0])
+        self.ore_prod = 1
+        self.clay_prod = 0
+        self.obsidian_prod = 0
+        self.geode_prod = 0
 
-        return self
+        self.ore = 0
+        self.clay = 0
+        self.obsidian = 0
+        self.geode = 0
 
-    def copy(self, state):
-        self.blueprint = state.blueprint
+    def step(self):
+        s = State()
+        s._copy(self)
+        s.ore += s.ore_prod
+        s.clay += s.clay_prod
+        s.obsidian += s.obsidian_prod
+        s.geode += s.geode_prod
 
-        self.prod = np.copy(state.prod)
-        self.stock = np.copy(state.stock)
-        self.incoming_prod = np.copy(state.incoming_prod)
+        s.minute += 1
+        return s
+
+    def _copy(self, state):
+        self.ore_prod = state.ore_prod
+        self.clay_prod = state.clay_prod
+        self.obsidian_prod = state.obsidian_prod
+        self.geode_prod = state.geode_prod
+
+        self.ore = state.ore
+        self.clay = state.clay
+        self.obsidian = state.obsidian
+        self.geode = state.geode
 
         self.minute = state.minute
 
         return self
 
-    def build_all(self):    
-        ore_cost = self.blueprint[5]
-        obsidian_cost = self.blueprint[6]
-        if self.stock[0] >= ore_cost and self.stock[2] >= obsidian_cost:
-            s = State().copy(self)
-            s.stock[0] -= ore_cost
-            s.stock[2] -= obsidian_cost
-            s.incoming_prod[3] += 1
-
-            yield s
-
-        ore_cost = self.blueprint[3]
-        clay_cost = self.blueprint[4]
-        if self.stock[0] >= ore_cost and self.stock[1] >= clay_cost:
-            if self.prod[2] < self.blueprint[6]:
-                s = State().copy(self)
-                s.stock[0] -= ore_cost
-                s.stock[1] -= clay_cost
-                s.incoming_prod[2] += 1
-                
-                yield s
-
-        ore_cost = self.blueprint[2]
-        if self.stock[0] >= ore_cost:
-            if self.prod[1] < self.blueprint[4]:
-                s = State().copy(self)
-                s.stock[0] -= ore_cost
-                s.incoming_prod[1] += 1
-                
-                yield s
-
-        ore_cost = self.blueprint[1]
-        if self.stock[0] >= ore_cost:
-            if self.prod[0] < max((self.blueprint[2], self.blueprint[3], self.blueprint[5])):
-                s = State().copy(self)
-                s.stock[0] -= ore_cost
-                s.incoming_prod[0] += 1
-                
-                yield s
-
-        yield self
-
-    def step(self):
-        self.stock += self.prod
-        self.prod += self.incoming_prod
-        self.incoming_prod = np.array([0, 0, 0, 0])
-        self.minute += 1
-
     def score(self):
-        return self.stock[3] + self.prod[3]
+        return self.geode + self.geode_prod
+
+    def best_possible(self):
+        remaining = GOAL - self.minute
+        return (
+            self.geode + self.geode_prod * remaining + remaining * (remaining - 1) / 2
+        )
+
+    def __eq__(self, __value: object) -> bool:
+        return repr(self) == repr(__value)
+
+    def __hash__(self) -> int:
+        return hash(repr(self))
 
     def __repr__(self) -> str:
-        return f"{self.stock} {self.prod}"
+        return f"{self.minute}: {self.ore} {self.clay} {self.obsidian} {self.geode} {self.ore_prod} {self.clay_prod} {self.obsidian_prod} {self.geode_prod}"
+
+
+def solve(
+    state: State, blueprint, cache: dict, skip_ore, skip_clay, skip_obsidian
+) -> int:
+    if state.minute == GOAL - 1:
+        return state.score()
+
+    if state in cache:
+        return cache[state]
+
+    best = 0
+    ore_cost = blueprint[5]
+    obsidian_cost = blueprint[6]
+    if state.ore >= ore_cost and state.obsidian >= obsidian_cost:
+        skip_obsidian = True
+        s = state.step()
+        s.ore -= ore_cost
+        s.obsidian -= obsidian_cost
+        s.geode_prod += 1
+
+        best = max(best, solve(s, blueprint, cache, False, False, False))
+
+        # heuristic: if we can build geode prod it's probably the best option, no need to search other options
+        return best
+
+    ore_cost = blueprint[3]
+    clay_cost = blueprint[4]
+    if not skip_obsidian and state.ore >= ore_cost and state.clay >= clay_cost:
+        skip_obsidian = True
+        # heuristic: don't need more prod than it takes to build a robot in a single turn
+        if state.obsidian_prod < blueprint[6]:
+            s = state.step()
+            s.ore -= ore_cost
+            s.clay -= clay_cost
+            s.obsidian_prod += 1
+
+            best = max(best, solve(s, blueprint, cache, False, False, False))
+
+    ore_cost = blueprint[2]
+    if not skip_clay and state.ore >= ore_cost:
+        skip_clay = True
+        # heuristic: don't need more prod than it takes to build a robot in a single turn
+        if state.clay_prod < blueprint[4]:
+            s = state.step()
+            s.ore -= ore_cost
+            s.clay_prod += 1
+
+            best = max(best, solve(s, blueprint, cache, False, False, False))
+
+    ore_cost = blueprint[1]
+
+    if not skip_ore and state.ore >= ore_cost:
+        skip_ore = True
+        # heuristic: don't need more prod than it takes to build a robot in a single turn
+        if state.ore_prod < max((blueprint[2], blueprint[3], blueprint[5])):
+            s = state.step()
+            s.ore -= ore_cost
+            s.ore_prod += 1
+
+            best = max(best, solve(s, blueprint, cache, False, False, False))
+
+    s = state.step()
+    best = max(best, solve(s, blueprint, cache, skip_ore, skip_clay, skip_obsidian))
+
+    cache[state] = best
+    return best
 
 
 def parse_raw_blueprint(s):
@@ -94,30 +139,26 @@ def parse_raw_blueprint(s):
     result = re.search(regex, s)
     return tuple(map(int, result.groups()))
 
+
 def evaluate_blueprint(raw_input):
     blueprint = parse_raw_blueprint(raw_input)
-    end_minute = 20
-    states = queue.SimpleQueue()
-    states.put(State().new(blueprint))
-    best = 0
+    state = State()
+    cache = {}
+    ans = solve(state, blueprint, cache, False, False, False)
 
-    while(not states.empty()):
-        state = states.get()
-        if state.minute == (end_minute - 1):
-            best = max(best, state.score())
-        else:
-            for s in state.build_all():
-                states.put(s)
-                s.step()
+    print(f"Blueprint {blueprint[0]} can get {ans} geodes.")
+    return ans
 
-        # print(f"Step {step} has {len(states)} states")
 
-    
-    return best
+def part1():
+    score = 0
+    with open("day19.input") as f:
+        lines = f.readlines()
+    for idx, line in enumerate(lines):
+        score += (1+idx) * evaluate_blueprint(line)
 
+    return score
 
 
 if __name__ == "__main__":
-    cProfile.run('evaluate_blueprint("Blueprint 1: Each ore robot costs 4 ore. Each clay robot costs 2 ore. Each obsidian robot costs 3 ore and 14 clay. Each geode robot costs 2 ore and 7 obsidian.")')
-    # geodes = evaluate_blueprint("Blueprint 1: Each ore robot costs 4 ore. Each clay robot costs 2 ore. Each obsidian robot costs 3 ore and 14 clay. Each geode robot costs 2 ore and 7 obsidian.")
-    # print(geodes)
+    print(part1())
